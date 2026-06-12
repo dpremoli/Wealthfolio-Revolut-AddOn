@@ -94,6 +94,7 @@ export function parseRevolutCsv(text: string): RevolutTransaction[] {
     const currency = c[iCurrency] || "GBP";
     const state = (c[iState] || "").toUpperCase();
     const balance = c[iBalance] || "";
+    const balanceNum = parseFloat(balance);
 
     // Only finalised, money-moving rows. Pending/declined/reverted are excluded.
     if (!completed || isNaN(amount) || amount === 0) return [];
@@ -117,6 +118,7 @@ export function parseRevolutCsv(text: string): RevolutTransaction[] {
         currency,
         state,
         product,
+        balance: isNaN(balanceNum) ? null : balanceNum,
       },
     ];
   });

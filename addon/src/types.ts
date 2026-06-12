@@ -26,4 +26,11 @@ export interface RevolutTransaction {
   state: string;
   /** Revolut product, e.g. "Current", "Savings". */
   product: string;
+  /**
+   * Running account balance after this row, in major units, from the CSV's Balance
+   * column. `null` when the column is absent/unparseable. Used to recover the opening
+   * balance (money present before the statement's first row) so the imported account
+   * reconciles to Revolut instead of reflecting only in-period movements.
+   */
+  balance: number | null;
 }

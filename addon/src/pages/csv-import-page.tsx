@@ -11,7 +11,12 @@ import {
   CardTitle,
 } from "@wealthfolio/ui";
 import { parseRevolutCsv } from "../lib/csv-parser";
-import { disambiguateComments, isInternalMovement, mapTransactionToActivity } from "../lib/mapper";
+import {
+  disambiguateComments,
+  isInternalMovement,
+  mapTransactionToActivity,
+  openingBalanceActivity,
+} from "../lib/mapper";
 import type { RevolutTransaction } from "../types";
 
 const ACCOUNT_KEY = "revolut_account_id";
@@ -76,9 +81,12 @@ export default function CsvImportPage({ ctx }: { ctx: AddonContext }) {
     setError(null);
     try {
       await ctx.api.secrets.set(ACCOUNT_KEY, accountId);
-      const activities = disambiguateComments(
-        filtered.flatMap((tx) => mapTransactionToActivity(tx, accountId)),
-      );
+      const movements = filtered.flatMap((tx) => mapTransactionToActivity(tx, accountId));
+      // Seed the pre-statement opening balance only when importing everything; in
+      // spending-only mode (skipInternal) the balance is intentionally partial, so
+      // seeding it would be misleading.
+      const opening = skipInternal ? null : openingBalanceActivity(filtered, accountId);
+      const activities = disambiguateComments(opening ? [opening, ...movements] : movements);
       const checked = await ctx.api.activities.checkImport(activities);
       const toImport = checked.filter((a) => a.isValid !== false && !a.duplicateOfId);
       const dupes = checked.length - toImport.length;

@@ -73,6 +73,20 @@ describe("parseRevolutCsv", () => {
     expect(other.id).not.toBe(a.id);
   });
 
+  it("captures the running balance as a number (for opening-balance recovery)", () => {
+    const [tx] = parseRevolutCsv(
+      csv("Card Payment,Current,2021-09-17 14:00:36,2021-09-18 1:25:56,Trainline,-10.71,0,GBP,COMPLETED,799"),
+    );
+    expect(tx.balance).toBe(799);
+  });
+
+  it("sets balance to null when the Balance column is missing or blank", () => {
+    const [tx] = parseRevolutCsv(
+      csv("Card Payment,Current,2021-09-17 14:00:36,2021-09-18 1:25:56,Trainline,-10.71,0,GBP,COMPLETED,"),
+    );
+    expect(tx.balance).toBeNull();
+  });
+
   it("returns an empty array for an empty or header-only file", () => {
     expect(parseRevolutCsv("")).toEqual([]);
     expect(parseRevolutCsv(HEADER)).toEqual([]);

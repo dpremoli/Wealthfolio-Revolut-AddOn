@@ -22,6 +22,68 @@ function round2(n: number): number {
   return Math.round((n + Number.EPSILON) * 100) / 100;
 }
 
+/** FNV-1a string hash → short hex, for a stable opening-balance id. */
+function hash(input: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < input.length; i++) {
+    h ^= input.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return (h >>> 0).toString(16).padStart(8, "0");
+}
+
+/**
+ * Builds an "Opening balance" activity that seeds the money already in the account
+ * before the statement's first row.
+ *
+ * Revolut's CSV only lists movements within the statement period, so summing the
+ * imported DEPOSIT/WITHDRAWAL/FEE activities reproduces the *net flow*, not the real
+ * ending balance — the account is short by whatever it held on day one. We recover
+ * that opening balance from the earliest row's `Balance` column (which is the running
+ * balance *after* that row) by reversing the row's own effect:
+ *
+ *   balanceAfter = opening + amount − fee   ⇒   opening = balanceAfter − amount + fee
+ *
+ * Returns `null` when the opening balance can't be derived (no Balance column) or is
+ * zero (nothing to seed). The id, day and comment are deterministic, so re-importing
+ * the same statement reproduces the identical row and the host de-dupes it cleanly.
+ *
+ * Caveat: this assumes a single statement covering the account's start. Importing a
+ * second statement that begins *earlier* would seed a second, different opening balance.
+ */
+export function openingBalanceActivity(
+  transactions: RevolutTransaction[],
+  wealthfolioAccountId: string,
+): ActivityImport | null {
+  if (transactions.length === 0) return null;
+
+  // Earliest row by date — the CSV is usually oldest-first, but don't rely on order.
+  const earliest = transactions.reduce((a, b) => (a.date <= b.date ? a : b));
+  if (earliest.balance === null) return null;
+
+  const opening = round2(earliest.balance - earliest.amount + earliest.fee);
+  if (opening === 0) return null;
+
+  const currency = earliest.currency || "GBP";
+  // Date the seed at the start of the earliest transaction's day so it precedes every
+  // movement and lands on a stable, re-import-deterministic day.
+  const day = String(earliest.date).slice(0, 10);
+  const date = `${day}T00:00:00.000Z`;
+
+  return {
+    id: `revolut-opening-${hash(`${currency}|${opening}|${day}`)}`,
+    accountId: wealthfolioAccountId,
+    activityType: opening >= 0 ? DEPOSIT : WITHDRAWAL,
+    date,
+    amount: Math.abs(opening),
+    currency,
+    symbol: `$CASH-${currency}`,
+    isValid: true,
+    isDraft: false,
+    comment: "Opening balance",
+  };
+}
+
 /**
  * Maps a Revolut transaction to one or more Wealthfolio activities.
  *

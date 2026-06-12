@@ -31,6 +31,13 @@ be extended like the Monzo/Trading 212 add-ons.)
     spending module can categorise it**;
   - any separate Revolut **fee** is imported as its own `FEE` activity so the cash
     balance stays accurate.
+- Seeds the account's **opening balance** so the imported balance reconciles to
+  Revolut. A statement only lists movements within its date range, so summing them
+  would give the *net flow*, not the real balance — the account would be short by
+  whatever it held before the first row (this is what makes a balance come out
+  negative). The opening balance is recovered from the earliest row's `Balance`
+  column and imported as a single dated `Opening balance` activity. It's skipped in
+  spending-only mode (where a partial balance is intended).
 - Optionally **skips internal movements** (transfers, exchanges, top-ups) so you can
   import card spending only — a checkbox on the import screen, on by default.
 - Lets you import into an **existing** account or **create a dedicated Revolut cash
