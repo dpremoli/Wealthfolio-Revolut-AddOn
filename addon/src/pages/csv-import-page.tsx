@@ -11,7 +11,7 @@ import {
   CardTitle,
 } from "@wealthfolio/ui";
 import { parseRevolutCsv } from "../lib/csv-parser";
-import { isInternalMovement, mapTransactionToActivity } from "../lib/mapper";
+import { disambiguateComments, isInternalMovement, mapTransactionToActivity } from "../lib/mapper";
 import type { RevolutTransaction } from "../types";
 
 const ACCOUNT_KEY = "revolut_account_id";
@@ -76,7 +76,9 @@ export default function CsvImportPage({ ctx }: { ctx: AddonContext }) {
     setError(null);
     try {
       await ctx.api.secrets.set(ACCOUNT_KEY, accountId);
-      const activities = filtered.flatMap((tx) => mapTransactionToActivity(tx, accountId));
+      const activities = disambiguateComments(
+        filtered.flatMap((tx) => mapTransactionToActivity(tx, accountId)),
+      );
       const checked = await ctx.api.activities.checkImport(activities);
       const toImport = checked.filter((a) => a.isValid !== false && !a.duplicateOfId);
       const dupes = checked.length - toImport.length;

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { isInternalMovement, mapTransactionToActivity } from "./mapper";
+import type { ActivityImport } from "@wealthfolio/addon-sdk";
+import { disambiguateComments, isInternalMovement, mapTransactionToActivity } from "./mapper";
 import type { RevolutTransaction } from "../types";
 
 function tx(overrides: Partial<RevolutTransaction> = {}): RevolutTransaction {
@@ -78,5 +79,70 @@ describe("mapTransactionToActivity", () => {
   it("does not emit a fee activity when there is no fee", () => {
     const activities = mapTransactionToActivity(tx({ fee: 0 }), "acc-1");
     expect(activities).toHaveLength(1);
+  });
+});
+
+describe("disambiguateComments", () => {
+  function act(over: Partial<ActivityImport> = {}): ActivityImport {
+    return {
+      id: "x",
+      accountId: "acc-1",
+      activityType: "WITHDRAWAL",
+      date: "2022-12-01T10:00:43.000Z",
+      amount: 1000,
+      currency: "GBP",
+      symbol: "$CASH-GBP",
+      isValid: true,
+      isDraft: false,
+      comment: "Withdrawing savings",
+      ...over,
+    } as ActivityImport;
+  }
+
+  it("suffixes 2nd+ activities that share day/type/amount/comment (the WF merge key)", () => {
+    const out = disambiguateComments([
+      act({ date: "2022-12-01T10:00:43.000Z" }),
+      act({ date: "2022-12-01T11:50:29.000Z" }), // same day/type/amount/comment, later time
+    ]);
+    expect(out[0].comment).toBe("Withdrawing savings");
+    expect(out[1].comment).toBe("Withdrawing savings (2)");
+  });
+
+  it("leaves same-day/amount rows alone when the description differs", () => {
+    const out = disambiguateComments([
+      act({ comment: "Tesco", amount: 2.9 }),
+      act({ comment: "Sainsbury's", amount: 2.9 }),
+    ]);
+    expect(out.map((a) => a.comment)).toEqual(["Tesco", "Sainsbury's"]);
+  });
+
+  it("does not collide across different days, amounts, or types", () => {
+    const out = disambiguateComments([
+      act({ date: "2022-09-16T00:02:19.000Z" }),
+      act({ date: "2022-12-01T10:00:43.000Z" }), // different day
+      act({ amount: 90 }), // different amount
+      act({ activityType: "DEPOSIT" }), // different type
+    ]);
+    expect(out.every((a) => a.comment === "Withdrawing savings")).toBe(true);
+  });
+
+  it("keeps the signed total unchanged (it only edits comments)", () => {
+    const before = [act(), act({ date: "2022-12-01T11:50:29.000Z" })];
+    const after = disambiguateComments(before);
+    const sum = (xs: ActivityImport[]) => xs.reduce((t, a) => t + (a.amount as number), 0);
+    expect(sum(after)).toBe(sum(before));
+  });
+
+  it("disambiguates colliding FEE legs too", () => {
+    const out = disambiguateComments([
+      act({ activityType: "FEE", amount: 0.43, comment: "Revolut fee" }),
+      act({
+        activityType: "FEE",
+        amount: 0.43,
+        comment: "Revolut fee",
+        date: "2022-12-01T15:00:00.000Z",
+      }),
+    ]);
+    expect(out[1].comment).toBe("Revolut fee (2)");
   });
 });

@@ -75,3 +75,29 @@ export function mapTransactionToActivity(
 
   return activities;
 }
+
+/**
+ * Wealthfolio de-duplicates imported activities on (account, calendar day, type, amount,
+ * comment) — it truncates the timestamp to the day and ignores our `id`. So two genuinely
+ * distinct transactions that share the same day, type, amount and description (e.g. two £1000
+ * "Withdrawing savings" on one day, or a duplicated "Trainline" charge) get silently merged on
+ * import, dropping real money from the balance.
+ *
+ * This appends a deterministic occurrence counter to the comment of the 2nd+ activities that
+ * collide on that exact key, so the host sees them as distinct. The first member is left
+ * untouched, so almost every comment is unchanged. It is order-deterministic (the activity list
+ * follows CSV order), so re-importing the same statement reproduces identical comments and the
+ * host still de-dupes correctly — no `forceImport` needed.
+ */
+export function disambiguateComments(activities: ActivityImport[]): ActivityImport[] {
+  const counts = new Map<string, number>();
+  return activities.map((a) => {
+    const day = String(a.date).slice(0, 10);
+    const key = `${day}|${a.activityType}|${a.amount}|${a.comment ?? ""}`;
+    const n = (counts.get(key) ?? 0) + 1;
+    counts.set(key, n);
+    if (n === 1) return a;
+    const base = a.comment ?? "";
+    return { ...a, comment: base ? `${base} (${n})` : `(${n})` };
+  });
+}
