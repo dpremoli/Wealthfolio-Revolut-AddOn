@@ -1,0 +1,32 @@
+{
+  "id": "revolut-addon",
+  "name": "Revolut CSV Import",
+  "version": "1.0.0",
+  "description": "Import Revolut account statements (CSV) into a Wealthfolio cash account for the spending module.",
+  "author": "dpremoli",
+  "main": "addon.js",
+  "sdkVersion": "3.3.0",
+  "enabled": true,
+  "permissions": [
+    {
+      "category": "accounts",
+      "functions": ["getAll", "create"],
+      "purpose": "Create and select a Wealthfolio cash account for Revolut"
+    },
+    {
+      "category": "activities",
+      "functions": ["import", "checkImport"],
+      "purpose": "Import Revolut transactions as cash activities"
+    },
+    {
+      "category": "secrets",
+      "functions": ["set", "get"],
+      "purpose": "Remember the chosen Revolut account between imports"
+    },
+    {
+      "category": "ui",
+      "functions": ["sidebar.addItem", "router.add"],
+      "purpose": "Add Revolut navigation and import page"
+    }
+  ]
+}

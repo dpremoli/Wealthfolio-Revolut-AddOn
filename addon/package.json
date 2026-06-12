@@ -1,0 +1,49 @@
+{
+  "name": "revolut-addon",
+  "version": "1.0.0",
+  "description": "Import Revolut account statements (CSV) into Wealthfolio cash accounts",
+  "type": "module",
+  "main": "dist/addon.js",
+  "author": "dpremoli",
+  "license": "SEE LICENSE IN LICENSE",
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite build --watch",
+    "dev:server": "wealthfolio dev",
+    "clean": "rm -rf dist",
+    "package": "mkdir -p dist && zip -r dist/$npm_package_name-$npm_package_version.zip manifest.json dist/ README.md",
+    "bundle": "npm run clean && npm run build && npm run package",
+    "type-check": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@tanstack/react-query": "^5.90.20",
+    "@wealthfolio/addon-sdk": "^3.3.0",
+    "@wealthfolio/ui": "^3.3.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.1.18",
+    "@testing-library/react": "^16.0.0",
+    "@types/node": "^20.19.33",
+    "@types/react": "^19.2.13",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.4",
+    "jsdom": "^24.0.0",
+    "rollup-plugin-external-globals": "^0.13.0",
+    "tailwind-merge": "^3.4.0",
+    "tailwindcss": "^4.1.18",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.1",
+    "vitest": "^2.1.0"
+  },
+  "peerDependencies": {
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4"
+  },
+  "files": [
+    "dist/",
+    "manifest.json",
+    "README.md"
+  ]
+}
