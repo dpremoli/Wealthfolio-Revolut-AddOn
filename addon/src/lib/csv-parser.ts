@@ -99,13 +99,18 @@ export function parseRevolutCsv(text: string): RevolutTransaction[] {
     if (!completed || isNaN(amount) || amount === 0) return [];
     if (state !== "COMPLETED") return [];
 
+    // Guard against unparseable dates — without this an invalid timestamp would
+    // be imported as the Unix epoch (1970) rather than the real transaction date.
+    const date = toIso(completed);
+    if (Number.isNaN(Date.parse(date))) return [];
+
     const id = `revolut-${hash(`${completed}|${amount}|${description}|${balance}`)}`;
 
     return [
       {
         id,
         type,
-        date: toIso(completed),
+        date,
         description,
         amount,
         fee,

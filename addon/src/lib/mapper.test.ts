@@ -39,9 +39,16 @@ describe("mapTransactionToActivity", () => {
       activityType: "WITHDRAWAL",
       amount: 10.71,
       currency: "GBP",
-      symbol: "GBP",
+      symbol: "$CASH-GBP",
       comment: "Trainline",
     });
+  });
+
+  it("uses the synthetic $CASH-<CCY> symbol so totals are not FX-inflated", () => {
+    const [gbp] = mapTransactionToActivity(tx({ currency: "GBP" }), "acc-1");
+    const [eur] = mapTransactionToActivity(tx({ currency: "EUR" }), "acc-1");
+    expect(gbp.symbol).toBe("$CASH-GBP");
+    expect(eur.symbol).toBe("$CASH-EUR");
   });
 
   it("maps a credit to a DEPOSIT", () => {
@@ -63,6 +70,7 @@ describe("mapTransactionToActivity", () => {
       id: "revolut-deadbeef-fee",
       activityType: "FEE",
       amount: 0.43,
+      symbol: "$CASH-GBP",
       comment: "Revolut fee",
     });
   });

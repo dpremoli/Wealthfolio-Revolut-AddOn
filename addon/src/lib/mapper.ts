@@ -36,6 +36,12 @@ export function mapTransactionToActivity(
   wealthfolioAccountId: string,
 ): ActivityImport[] {
   const currency = tx.currency || "GBP";
+  // Cash activities (DEPOSIT/WITHDRAWAL/FEE) are cash-only and never reference a
+  // tradable asset. Wealthfolio represents the cash leg with the synthetic
+  // `$CASH-<CCY>` symbol (priced at 1.0); using a bare currency code like "GBP"
+  // makes the host treat it as a security and value it via an FX quote, which
+  // produces wildly inflated account totals.
+  const symbol = `$CASH-${currency}`;
 
   const activities: ActivityImport[] = [
     {
@@ -45,7 +51,7 @@ export function mapTransactionToActivity(
       date: tx.date,
       amount: round2(Math.abs(tx.amount)),
       currency,
-      symbol: currency,
+      symbol,
       isValid: true,
       isDraft: false,
       comment: tx.description || undefined,
@@ -60,7 +66,7 @@ export function mapTransactionToActivity(
       date: tx.date,
       amount: round2(Math.abs(tx.fee)),
       currency,
-      symbol: currency,
+      symbol,
       isValid: true,
       isDraft: false,
       comment: "Revolut fee",

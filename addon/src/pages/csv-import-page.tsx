@@ -21,7 +21,7 @@ export default function CsvImportPage({ ctx }: { ctx: AddonContext }) {
   const [transactions, setTransactions] = useState<RevolutTransaction[]>([]);
   const [fileName, setFileName] = useState<string | null>(null);
   const [accountId, setAccountId] = useState("");
-  const [skipInternal, setSkipInternal] = useState(true);
+  const [skipInternal, setSkipInternal] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [result, setResult] = useState<{ imported: number; duplicates: number } | null>(null);
@@ -189,6 +189,10 @@ export default function CsvImportPage({ ctx }: { ctx: AddonContext }) {
               />
               Skip transfers, exchanges &amp; top-ups (import card spending only)
             </label>
+            <p className="text-xs text-muted-foreground -mt-2">
+              Leave unchecked to import everything so the account balance matches Revolut. Tick it
+              for a spending-only view (the balance will then reflect outgoings only).
+            </p>
 
             <p className="text-xs text-muted-foreground">
               {filtered.length} transactions to import
