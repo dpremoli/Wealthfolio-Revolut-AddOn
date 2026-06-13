@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { ActivityImport } from "@wealthfolio/addon-sdk";
 import {
-  isInternalMovement,
   mapTransactionToActivity,
+  mapType,
   openingBalanceActivity,
   selectNewActivities,
 } from "./mapper";
@@ -24,16 +24,22 @@ function tx(overrides: Partial<RevolutTransaction> = {}): RevolutTransaction {
   };
 }
 
-describe("isInternalMovement", () => {
-  it("flags transfers, exchanges and top-ups", () => {
-    expect(isInternalMovement(tx({ type: "Transfer" }))).toBe(true);
-    expect(isInternalMovement(tx({ type: "Exchange" }))).toBe(true);
-    expect(isInternalMovement(tx({ type: "Topup" }))).toBe(true);
+describe("mapType", () => {
+  it("maps card payments and ATM withdrawals to DEPOSIT/WITHDRAWAL by sign", () => {
+    expect(mapType("Card Payment", -10.71)).toBe("WITHDRAWAL");
+    expect(mapType("ATM", -20)).toBe("WITHDRAWAL");
+    expect(mapType("Card Refund", 5)).toBe("DEPOSIT");
   });
 
-  it("does not flag card payments or ATM withdrawals", () => {
-    expect(isInternalMovement(tx({ type: "Card Payment" }))).toBe(false);
-    expect(isInternalMovement(tx({ type: "ATM" }))).toBe(false);
+  it("maps transfers and exchanges to TRANSFER_IN/OUT by sign", () => {
+    expect(mapType("Transfer", -100)).toBe("TRANSFER_OUT");
+    expect(mapType("Transfer", 100)).toBe("TRANSFER_IN");
+    expect(mapType("Exchange", -85.46)).toBe("TRANSFER_OUT");
+    expect(mapType("Exchange", 99.2)).toBe("TRANSFER_IN");
+  });
+
+  it("maps top-ups to DEPOSIT (incoming funding / income, not spending)", () => {
+    expect(mapType("Topup", 4902.25)).toBe("DEPOSIT");
   });
 });
 
@@ -58,13 +64,22 @@ describe("mapTransactionToActivity", () => {
     expect(eur.symbol).toBe("$CASH-EUR");
   });
 
-  it("maps a credit to a DEPOSIT", () => {
+  it("maps a top-up to a DEPOSIT", () => {
     const [a] = mapTransactionToActivity(
       tx({ type: "Topup", description: "Payment from UNIVERSITY OF SHEF", amount: 4902.25 }),
       "acc-1",
     );
     expect(a.activityType).toBe("DEPOSIT");
     expect(a.amount).toBe(4902.25);
+  });
+
+  it("maps an exchange leg to a TRANSFER_OUT (kept in balance, out of spending)", () => {
+    const [a] = mapTransactionToActivity(
+      tx({ type: "Exchange", description: "Exchanged to EUR", amount: -85.46 }),
+      "acc-1",
+    );
+    expect(a.activityType).toBe("TRANSFER_OUT");
+    expect(a.amount).toBe(85.46);
   });
 
   it("emits a separate FEE activity when a fee is charged", () => {
@@ -143,19 +158,23 @@ describe("openingBalanceActivity", () => {
     );
   });
 
-  it("seeds so that opening + net movements equals the final Revolut balance", () => {
+  it("seeds so opening + net movements equals the final balance, across all cash types", () => {
+    // Mixes a transfer, an exchange leg and a fee to prove TRANSFER_*/FEE all reconcile.
     const rows = [
-      tx({ date: "2021-09-18T01:25:56.000Z", amount: -10.71, balance: 799 }),
-      tx({ date: "2021-09-30T17:08:08.000Z", amount: 4902.25, balance: 5701.25 }),
+      tx({ date: "2021-09-18T01:25:56.000Z", amount: -10.71, balance: 799 }), // WITHDRAWAL
+      tx({ type: "Topup", date: "2021-09-30T17:08:08.000Z", amount: 4902.25, balance: 5701.25 }), // DEPOSIT
+      tx({ type: "Transfer", date: "2021-10-01T09:00:00.000Z", amount: -200, balance: 5501.25 }), // TRANSFER_OUT
+      tx({ type: "Exchange", date: "2021-10-02T09:00:00.000Z", amount: -85.46, fee: 0.43, balance: 5415.36 }), // TRANSFER_OUT + FEE
     ];
     const opening = openingBalanceActivity(rows, "acc-1");
+    const credits = new Set(["DEPOSIT", "TRANSFER_IN"]);
     const signed = (a: { activityType: string; amount: number }) =>
-      a.activityType === "DEPOSIT" ? a.amount : -a.amount;
+      credits.has(a.activityType) ? a.amount : -a.amount;
     const movements = rows.flatMap((t) => mapTransactionToActivity(t, "acc-1"));
     const total =
       signed(opening as { activityType: string; amount: number }) +
       movements.reduce((s, m) => s + signed(m as { activityType: string; amount: number }), 0);
-    expect(Math.round(total * 100) / 100).toBe(5701.25);
+    expect(Math.round(total * 100) / 100).toBe(5415.36);
   });
 });
 

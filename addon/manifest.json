@@ -1,7 +1,7 @@
 {
   "id": "revolut-addon",
   "name": "Revolut CSV Import",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "Import Revolut account statements (CSV) into a Wealthfolio cash account for the spending module.",
   "author": "dpremoli",
   "main": "addon.js",
@@ -15,7 +15,7 @@
     },
     {
       "category": "activities",
-      "functions": ["import", "checkImport", "getAll"],
+      "functions": ["import", "getAll"],
       "purpose": "Import Revolut transactions and reconcile against existing ones to avoid duplicates"
     },
     {

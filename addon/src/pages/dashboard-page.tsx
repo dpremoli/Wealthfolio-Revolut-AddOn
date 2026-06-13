@@ -26,7 +26,7 @@ export default function DashboardPage({ ctx }: { ctx: AddonContext }) {
               </div>
             }
             title="Import a Revolut statement"
-            description="Revolut has no free personal API, so transactions are imported from a CSV statement export. Card spending flows into Wealthfolio's spending module; you can optionally include transfers, exchanges and top-ups."
+            description="Revolut has no free personal API, so transactions are imported from a CSV statement export. Each currency in the file imports into its own cash account so every balance matches Revolut; card spending flows into the spending module, while transfers and exchanges stay in the balance but are excluded from spending."
           >
             <div className="mt-4">
               <Button onClick={openImport}>

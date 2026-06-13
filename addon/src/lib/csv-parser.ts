@@ -105,7 +105,7 @@ export function parseRevolutCsv(text: string): RevolutTransaction[] {
     const date = toIso(completed);
     if (Number.isNaN(Date.parse(date))) return [];
 
-    const id = `revolut-${hash(`${completed}|${amount}|${description}|${balance}`)}`;
+    const id = `revolut-${currency}-${hash(`${completed}|${amount}|${description}|${balance}`)}`;
 
     return [
       {

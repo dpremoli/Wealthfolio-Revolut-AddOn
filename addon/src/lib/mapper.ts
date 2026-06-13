@@ -3,18 +3,29 @@ import type { RevolutTransaction } from "../types";
 
 const DEPOSIT = "DEPOSIT" as ActivityImport["activityType"];
 const WITHDRAWAL = "WITHDRAWAL" as ActivityImport["activityType"];
+const TRANSFER_IN = "TRANSFER_IN" as ActivityImport["activityType"];
+const TRANSFER_OUT = "TRANSFER_OUT" as ActivityImport["activityType"];
 const FEE = "FEE" as ActivityImport["activityType"];
 
-/** Revolut types that are internal money movement rather than real spending. */
-const INTERNAL_TYPES = new Set(["transfer", "exchange", "topup"]);
-
 /**
- * True for Transfers, Exchanges and Top-ups — internal movements between pockets,
- * currencies or from external sources rather than merchant spending. The CSV import
- * page offers a toggle to skip these so the spending module sees only real expenses.
+ * Picks the Wealthfolio activity type for a Revolut row from its `type` and sign.
+ *
+ * The goal is a balance that always matches Revolut while keeping the spending module
+ * clean: Wealthfolio's spending analytics count DEPOSIT/WITHDRAWAL but ignore the
+ * TRANSFER_* types, so internal money movement (transfers between accounts, currency
+ * exchanges) stays in the cash balance yet never shows up as spending.
+ *
+ *   - Transfer / Exchange → TRANSFER_IN (credit) or TRANSFER_OUT (debit). A cross-currency
+ *     exchange therefore becomes a TRANSFER_OUT on one currency's account and a TRANSFER_IN
+ *     on the other's — each account reconciles independently, no cross-account link needed.
+ *   - Top-up → DEPOSIT (incoming funding / salary; income, not spending).
+ *   - Anything else (Card Payment, ATM, Card Refund, Cashback, …) → DEPOSIT/WITHDRAWAL by sign.
  */
-export function isInternalMovement(tx: RevolutTransaction): boolean {
-  return INTERNAL_TYPES.has((tx.type || "").toLowerCase());
+export function mapType(revolutType: string, amount: number): ActivityImport["activityType"] {
+  const t = (revolutType || "").toLowerCase();
+  if (t === "transfer" || t === "exchange") return amount >= 0 ? TRANSFER_IN : TRANSFER_OUT;
+  if (t === "topup") return DEPOSIT;
+  return amount >= 0 ? DEPOSIT : WITHDRAWAL;
 }
 
 /** Rounds to 2 decimal places, avoiding binary float drift (e.g. 10.005 → 10.01). */
@@ -87,18 +98,19 @@ export function openingBalanceActivity(
 /**
  * Maps a Revolut transaction to one or more Wealthfolio activities.
  *
- * The sign of the amount picks DEPOSIT (credit) vs WITHDRAWAL (debit), mirroring the
- * Monzo addon. The merchant description is passed through as the comment so
- * Wealthfolio's spending module can categorise it. When Revolut charged a separate
- * fee, a second FEE activity is emitted (with a derived `-fee` id) so the cash
- * balance stays accurate when importing every row.
+ * `mapType` picks the activity type from the Revolut `type` and sign so the balance
+ * matches Revolut while transfers/exchanges stay out of the spending module. The
+ * merchant description is passed through as the comment so Wealthfolio's spending
+ * module can categorise it. When Revolut charged a separate fee, a second FEE activity
+ * is emitted (with a derived `-fee` id) so the cash balance stays accurate when
+ * importing every row.
  */
 export function mapTransactionToActivity(
   tx: RevolutTransaction,
   wealthfolioAccountId: string,
 ): ActivityImport[] {
   const currency = tx.currency || "GBP";
-  // Cash activities (DEPOSIT/WITHDRAWAL/FEE) are cash-only and never reference a
+  // Cash activities (DEPOSIT/WITHDRAWAL/TRANSFER_*/FEE) are cash-only and never reference a
   // tradable asset. Wealthfolio represents the cash leg with the synthetic
   // `$CASH-<CCY>` symbol (priced at 1.0); using a bare currency code like "GBP"
   // makes the host treat it as a security and value it via an FX quote, which
@@ -109,7 +121,7 @@ export function mapTransactionToActivity(
     {
       id: tx.id,
       accountId: wealthfolioAccountId,
-      activityType: tx.amount >= 0 ? DEPOSIT : WITHDRAWAL,
+      activityType: mapType(tx.type, tx.amount),
       date: tx.date,
       amount: round2(Math.abs(tx.amount)),
       currency,

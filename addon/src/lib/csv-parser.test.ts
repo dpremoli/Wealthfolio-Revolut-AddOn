@@ -58,19 +58,31 @@ describe("parseRevolutCsv", () => {
     expect(txs).toHaveLength(0);
   });
 
-  it("produces a stable, unique id per row", () => {
+  it("produces a stable, currency-scoped, unique id per row", () => {
     const row =
       "Card Payment,Current,2021-09-17 14:00:36,2021-09-18 1:25:56,Trainline,-10.71,0,GBP,COMPLETED,799";
     const a = parseRevolutCsv(csv(row))[0];
     const b = parseRevolutCsv(csv(row))[0];
     expect(a.id).toBe(b.id);
-    expect(a.id).toMatch(/^revolut-[0-9a-f]{8}$/);
+    expect(a.id).toMatch(/^revolut-GBP-[0-9a-f]{8}$/);
 
     // Two different rows must not collide.
     const other = parseRevolutCsv(
       csv("Card Payment,Current,2021-09-23 14:47:25,2021-09-24 6:50:19,Uber,-3.85,0,GBP,COMPLETED,795.15"),
     )[0];
     expect(other.id).not.toBe(a.id);
+  });
+
+  it("parses a mixed-currency statement, tagging each row's currency", () => {
+    const txs = parseRevolutCsv(
+      csv(
+        "Card Payment,Current,2021-09-17 14:00:36,2021-09-18 1:25:56,Trainline,-10.71,0,GBP,COMPLETED,799",
+        "Card Payment,Current,2021-10-01 10:00:00,2021-10-01 10:00:00,Carrefour,-12.30,0,EUR,COMPLETED,200",
+        "Card Payment,Current,2021-10-02 10:00:00,2021-10-02 10:00:00,Amazon,-5.00,0,USD,COMPLETED,50",
+      ),
+    );
+    expect(txs.map((t) => t.currency)).toEqual(["GBP", "EUR", "USD"]);
+    expect(txs[1].id).toMatch(/^revolut-EUR-/);
   });
 
   it("captures the running balance as a number (for opening-balance recovery)", () => {

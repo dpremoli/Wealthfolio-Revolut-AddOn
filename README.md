@@ -25,23 +25,29 @@ be extended like the Monzo/Trading 212 add-ons.)
 - Parses a Revolut account-statement CSV
   (`Type, Product, Started Date, Completed Date, Description, Amount, Fee, Currency, State, Balance`).
 - Imports only **completed** transactions (pending/declined/reverted rows are skipped).
-- Maps each row to a Wealthfolio cash activity:
-  - debits → `WITHDRAWAL`, credits → `DEPOSIT`;
+- **One cash account per currency.** A single Revolut export can mix currencies
+  (e.g. GBP, EUR, USD). The add-on detects each currency and imports its rows into a
+  dedicated `Revolut <CCY>` account, so every account reconciles to Revolut's own
+  per-currency balance instead of mixing currencies in one account.
+- Maps each row to a Wealthfolio cash activity by its Revolut type:
+  - Card Payment / ATM → `WITHDRAWAL`, card refunds / credits → `DEPOSIT`;
+  - Transfers & Exchanges → `TRANSFER_IN`/`TRANSFER_OUT` — kept in the balance but
+    **excluded from spending analytics** (a cross-currency exchange becomes a
+    `TRANSFER_OUT` on one account and a `TRANSFER_IN` on the other, and both reconcile);
+  - Top-ups → `DEPOSIT` (incoming funding / income);
   - the merchant/description is kept as the activity comment so **Wealthfolio's
     spending module can categorise it**;
   - any separate Revolut **fee** is imported as its own `FEE` activity so the cash
     balance stays accurate.
-- Seeds the account's **opening balance** so the imported balance reconciles to
+- Seeds each account's **opening balance** so the imported balance reconciles to
   Revolut. A statement only lists movements within its date range, so summing them
   would give the *net flow*, not the real balance — the account would be short by
   whatever it held before the first row (this is what makes a balance come out
-  negative). The opening balance is recovered from the earliest row's `Balance`
-  column and imported as a single dated `Opening balance` activity. It's skipped in
-  spending-only mode (where a partial balance is intended).
-- Optionally **skips internal movements** (transfers, exchanges, top-ups) so you can
-  import card spending only — a checkbox on the import screen, on by default.
-- Lets you import into an **existing** account or **create a dedicated Revolut cash
-  account** (CASH, transactions-tracked, in the statement's currency) with one click.
+  negative). The opening balance is recovered per currency from the earliest row's
+  `Balance` column and imported as a single dated `Opening balance` activity.
+- Lets you map each currency to an **existing** account or **create a dedicated
+  `Revolut <CCY>` cash account** (CASH, transactions-tracked) with one click, and
+  remembers the mapping for next time.
 - Imports every transaction faithfully, even genuine duplicates. Wealthfolio's importer
   otherwise merges any two activities that share the same account, day, type and amount
   (e.g. two £1,000 transfers on one day, or a repeated charge), silently dropping real
@@ -66,8 +72,10 @@ be extended like the Monzo/Trading 212 add-ons.)
 
 1. Open **Revolut Import** in the sidebar, then **Import CSV**.
 2. Choose your exported CSV.
-3. Pick a target account (or click **+ Revolut account** to create one).
-4. Choose whether to skip transfers/exchanges/top-ups, then **Import**.
+3. For each currency detected, pick an account or click **+ Revolut <CCY>** to create
+   one (or **Create all missing accounts**).
+4. Click **Import**. Each currency's rows go to its mapped account; re-importing the
+   same or an overlapping statement is safe (it adds nothing).
 
 ## Development
 
