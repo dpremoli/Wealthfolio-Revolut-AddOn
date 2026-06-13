@@ -138,28 +138,58 @@ export function mapTransactionToActivity(
   return activities;
 }
 
+/** Minimal shape of an already-imported activity, as returned by `activities.getAll`. */
+export interface ExistingActivity {
+  activityType: string;
+  date: Date | string;
+  amount: number | string | null;
+  comment?: string | null;
+}
+
+/** The merge key Wealthfolio collapses on at import time: day, type, amount (to 2dp), comment. */
+function dedupKey(
+  activityType: string,
+  date: Date | string,
+  amount: number | string | null | undefined,
+  comment: string | null | undefined,
+): string {
+  const iso = date instanceof Date ? date.toISOString() : String(date);
+  const day = iso.slice(0, 10);
+  const amt = Number(amount ?? 0).toFixed(2);
+  return `${day}|${activityType}|${amt}|${comment ?? ""}`;
+}
+
 /**
- * Wealthfolio de-duplicates imported activities on (account, calendar day, type, amount,
- * comment) — it truncates the timestamp to the day and ignores our `id`. So two genuinely
- * distinct transactions that share the same day, type, amount and description (e.g. two £1000
- * "Withdrawing savings" on one day, or a duplicated "Trainline" charge) get silently merged on
- * import, dropping real money from the balance.
+ * Picks the activities that aren't already in the account, so re-imports add nothing while
+ * genuinely repeated transactions all land.
  *
- * This appends a deterministic occurrence counter to the comment of the 2nd+ activities that
- * collide on that exact key, so the host sees them as distinct. The first member is left
- * untouched, so almost every comment is unchanged. It is order-deterministic (the activity list
- * follows CSV order), so re-importing the same statement reproduces identical comments and the
- * host still de-dupes correctly — no `forceImport` needed.
+ * Wealthfolio's import silently merges any two activities sharing (account, calendar day, type,
+ * amount) — it ignores both the comment and our `id`. So two distinct transactions on the same
+ * day for the same amount (e.g. two £1000 "Withdrawing savings") collapse into one, dropping real
+ * money. The import call therefore runs with `forceImport` to bypass that merge — which means we
+ * must supply idempotency ourselves, or a second import of the same file would double everything.
+ *
+ * This reconciles by *count* per (day, type, amount, comment): if the account already holds N rows
+ * for a key, the first N desired rows for that key are skipped and the rest are kept. Re-importing
+ * the same statement yields an empty set; importing an overlapping/extended statement adds only the
+ * surplus. It does not depend on the host preserving our `id`.
  */
-export function disambiguateComments(activities: ActivityImport[]): ActivityImport[] {
-  const counts = new Map<string, number>();
-  return activities.map((a) => {
-    const day = String(a.date).slice(0, 10);
-    const key = `${day}|${a.activityType}|${a.amount}|${a.comment ?? ""}`;
-    const n = (counts.get(key) ?? 0) + 1;
-    counts.set(key, n);
-    if (n === 1) return a;
-    const base = a.comment ?? "";
-    return { ...a, comment: base ? `${base} (${n})` : `(${n})` };
-  });
+export function selectNewActivities(
+  desired: ActivityImport[],
+  existing: ExistingActivity[],
+): ActivityImport[] {
+  const have = new Map<string, number>();
+  for (const e of existing) {
+    const k = dedupKey(e.activityType, e.date, e.amount, e.comment);
+    have.set(k, (have.get(k) ?? 0) + 1);
+  }
+  const seen = new Map<string, number>();
+  const out: ActivityImport[] = [];
+  for (const a of desired) {
+    const k = dedupKey(a.activityType, a.date ?? "", a.amount, a.comment);
+    const idx = seen.get(k) ?? 0;
+    seen.set(k, idx + 1);
+    if (idx >= (have.get(k) ?? 0)) out.push(a);
+  }
+  return out;
 }

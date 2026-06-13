@@ -12,10 +12,10 @@ import {
 } from "@wealthfolio/ui";
 import { parseRevolutCsv } from "../lib/csv-parser";
 import {
-  disambiguateComments,
   isInternalMovement,
   mapTransactionToActivity,
   openingBalanceActivity,
+  selectNewActivities,
 } from "../lib/mapper";
 import type { RevolutTransaction } from "../types";
 
@@ -86,16 +86,24 @@ export default function CsvImportPage({ ctx }: { ctx: AddonContext }) {
       // spending-only mode (skipInternal) the balance is intentionally partial, so
       // seeding it would be misleading.
       const opening = skipInternal ? null : openingBalanceActivity(filtered, accountId);
-      const activities = disambiguateComments(opening ? [opening, ...movements] : movements);
-      const checked = await ctx.api.activities.checkImport(activities);
-      const toImport = checked.filter((a) => a.isValid !== false && !a.duplicateOfId);
-      const dupes = checked.length - toImport.length;
+      const desired = opening ? [opening, ...movements] : movements;
+
+      // Wealthfolio's importer merges any two activities sharing (account, day, type, amount),
+      // ignoring the comment and our id, which silently drops genuinely-distinct same-day
+      // transactions. We therefore force every row in and do de-duplication ourselves by
+      // reconciling against what's already in the account — so re-imports add nothing while
+      // real duplicates are preserved.
+      const existing = await ctx.api.activities.getAll(accountId);
+      const toImport = selectNewActivities(desired, existing).map((a) => ({
+        ...a,
+        forceImport: true,
+      }));
       let imported = 0;
       if (toImport.length > 0) {
         const r = await ctx.api.activities.import(toImport);
         imported = r.summary.imported;
       }
-      setResult({ imported, duplicates: dupes });
+      setResult({ imported, duplicates: desired.length - toImport.length });
     } catch (err) {
       setError((err as Error).message);
     } finally {

@@ -15,8 +15,8 @@
     },
     {
       "category": "activities",
-      "functions": ["import", "checkImport"],
-      "purpose": "Import Revolut transactions as cash activities"
+      "functions": ["import", "checkImport", "getAll"],
+      "purpose": "Import Revolut transactions and reconcile against existing ones to avoid duplicates"
     },
     {
       "category": "secrets",

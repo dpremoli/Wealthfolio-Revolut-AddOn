@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { ActivityImport } from "@wealthfolio/addon-sdk";
 import {
-  disambiguateComments,
   isInternalMovement,
   mapTransactionToActivity,
   openingBalanceActivity,
+  selectNewActivities,
 } from "./mapper";
 import type { RevolutTransaction } from "../types";
 
@@ -159,13 +159,13 @@ describe("openingBalanceActivity", () => {
   });
 });
 
-describe("disambiguateComments", () => {
+describe("selectNewActivities", () => {
   function act(over: Partial<ActivityImport> = {}): ActivityImport {
     return {
       id: "x",
       accountId: "acc-1",
-      activityType: "WITHDRAWAL",
-      date: "2022-12-01T10:00:43.000Z",
+      activityType: "DEPOSIT",
+      date: "2022-09-16T10:00:43.000Z",
       amount: 1000,
       currency: "GBP",
       symbol: "$CASH-GBP",
@@ -176,50 +176,47 @@ describe("disambiguateComments", () => {
     } as ActivityImport;
   }
 
-  it("suffixes 2nd+ activities that share day/type/amount/comment (the WF merge key)", () => {
-    const out = disambiguateComments([
-      act({ date: "2022-12-01T10:00:43.000Z" }),
-      act({ date: "2022-12-01T11:50:29.000Z" }), // same day/type/amount/comment, later time
-    ]);
-    expect(out[0].comment).toBe("Withdrawing savings");
-    expect(out[1].comment).toBe("Withdrawing savings (2)");
+  it("keeps both genuinely-distinct same-day/type/amount rows when nothing exists yet", () => {
+    const out = selectNewActivities(
+      [act({ date: "2022-09-16T10:00:43.000Z" }), act({ date: "2022-09-16T15:50:29.000Z" })],
+      [],
+    );
+    expect(out).toHaveLength(2);
   });
 
-  it("leaves same-day/amount rows alone when the description differs", () => {
-    const out = disambiguateComments([
-      act({ comment: "Tesco", amount: 2.9 }),
-      act({ comment: "Sainsbury's", amount: 2.9 }),
-    ]);
-    expect(out.map((a) => a.comment)).toEqual(["Tesco", "Sainsbury's"]);
+  it("adds nothing on a re-import (account already holds both)", () => {
+    const desired = [act({ date: "2022-09-16T10:00:43.000Z" }), act({ date: "2022-09-16T15:50:29.000Z" })];
+    const existing = [
+      { activityType: "DEPOSIT", date: "2022-09-16T00:00:00.000Z", amount: "1000", comment: "Withdrawing savings" },
+      { activityType: "DEPOSIT", date: "2022-09-16T00:00:00.000Z", amount: "1000", comment: "Withdrawing savings" },
+    ];
+    expect(selectNewActivities(desired, existing)).toHaveLength(0);
   });
 
-  it("does not collide across different days, amounts, or types", () => {
-    const out = disambiguateComments([
-      act({ date: "2022-09-16T00:02:19.000Z" }),
+  it("imports only the surplus when the account holds some but not all", () => {
+    const desired = [act(), act(), act()]; // 3 identical-key rows
+    const existing = [
+      { activityType: "DEPOSIT", date: "2022-09-16T00:00:00.000Z", amount: 1000, comment: "Withdrawing savings" },
+    ];
+    expect(selectNewActivities(desired, existing)).toHaveLength(2);
+  });
+
+  it("treats different days/amounts/types/comments as distinct keys", () => {
+    const desired = [
+      act({ date: "2022-09-16T10:00:43.000Z" }),
       act({ date: "2022-12-01T10:00:43.000Z" }), // different day
       act({ amount: 90 }), // different amount
-      act({ activityType: "DEPOSIT" }), // different type
-    ]);
-    expect(out.every((a) => a.comment === "Withdrawing savings")).toBe(true);
+      act({ activityType: "WITHDRAWAL" }), // different type
+      act({ comment: "Tesco" }), // different comment
+    ];
+    expect(selectNewActivities(desired, [])).toHaveLength(5);
   });
 
-  it("keeps the signed total unchanged (it only edits comments)", () => {
-    const before = [act(), act({ date: "2022-12-01T11:50:29.000Z" })];
-    const after = disambiguateComments(before);
-    const sum = (xs: ActivityImport[]) => xs.reduce((t, a) => t + (a.amount as number), 0);
-    expect(sum(after)).toBe(sum(before));
-  });
-
-  it("disambiguates colliding FEE legs too", () => {
-    const out = disambiguateComments([
-      act({ activityType: "FEE", amount: 0.43, comment: "Revolut fee" }),
-      act({
-        activityType: "FEE",
-        amount: 0.43,
-        comment: "Revolut fee",
-        date: "2022-12-01T15:00:00.000Z",
-      }),
-    ]);
-    expect(out[1].comment).toBe("Revolut fee (2)");
+  it("handles existing rows whose date is a Date object", () => {
+    const desired = [act({ date: "2022-09-16T10:00:43.000Z" })];
+    const existing = [
+      { activityType: "DEPOSIT", date: new Date("2022-09-16T00:00:00.000Z"), amount: 1000, comment: "Withdrawing savings" },
+    ];
+    expect(selectNewActivities(desired, existing)).toHaveLength(0);
   });
 });

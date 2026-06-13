@@ -42,8 +42,12 @@ be extended like the Monzo/Trading 212 add-ons.)
   import card spending only — a checkbox on the import screen, on by default.
 - Lets you import into an **existing** account or **create a dedicated Revolut cash
   account** (CASH, transactions-tracked, in the statement's currency) with one click.
-- De-duplicates re-imports: each row gets a stable id derived from its date, amount,
-  description and running balance, so importing overlapping statements is safe.
+- Imports every transaction faithfully, even genuine duplicates. Wealthfolio's importer
+  otherwise merges any two activities that share the same account, day, type and amount
+  (e.g. two £1,000 transfers on one day, or a repeated charge), silently dropping real
+  money. The add-on forces each row in and instead de-duplicates against what's already in
+  the account, so importing the same or an overlapping statement twice adds nothing while
+  genuinely repeated transactions are all kept.
 
 ## How to export your statement from Revolut
 
